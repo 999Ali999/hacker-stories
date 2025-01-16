@@ -1,7 +1,7 @@
 import * as React from "react";
 
 type Story = {
-  objectID: number;
+  objectID: string;
   url: string;
   title: string;
   author: string;
@@ -9,35 +9,23 @@ type Story = {
   points: number;
 };
 
-const initialStories = [
-  {
-    title: "React",
-    url: "https://reactjs.org/",
-    author: "Jordan Walke",
-    num_comments: 3,
-    points: 4,
-    objectID: 0,
-  },
-  {
-    title: "Redux",
-    url: "https://redux.js.org/",
-    author: "Dan Abramov, Andrew Clark",
-    num_comments: 2,
-    points: 5,
-    objectID: 1,
-  },
-];
+type StoriesState = {
+  data: Story[];
+  isLoading: boolean;
+  isError: boolean;
+};
 
-const getAsyncStories = (): Promise<{ data: { stories: Story[] } }> =>
-  new Promise((resolve) =>
-    setTimeout(() => resolve({ data: { stories: initialStories } }), 2000)
-  );
+type StoriesFetchInitAction = {
+  type: "STORIES_FETCH_INIT";
+};
 
-type StoriesState = Story[];
-
-type StoriesSetAction = {
-  type: "SET_STORIES";
+type StoriesFetchSuccessAction = {
+  type: "STORIES_FETCH_SUCCESS";
   payload: Story[];
+};
+
+type StoriesFetchFailureAction = {
+  type: "STORIES_FETCH_FAILURE";
 };
 
 type StoriesRemoveAction = {
@@ -45,16 +33,40 @@ type StoriesRemoveAction = {
   payload: Story;
 };
 
-type StoriesAction = StoriesSetAction | StoriesRemoveAction;
+type StoriesAction =
+  | StoriesFetchInitAction
+  | StoriesFetchSuccessAction
+  | StoriesFetchFailureAction
+  | StoriesRemoveAction;
 
 const storiesReducer = (state: StoriesState, action: StoriesAction) => {
   switch (action.type) {
-    case "SET_STORIES":
-      return action.payload;
+    case "STORIES_FETCH_INIT":
+      return {
+        ...state,
+        isLoading: true,
+        isError: false,
+      };
+    case "STORIES_FETCH_SUCCESS":
+      return {
+        ...state,
+        isLoading: false,
+        isError: false,
+        data: action.payload,
+      };
+    case "STORIES_FETCH_FAILURE":
+      return {
+        ...state,
+        isLoading: false,
+        isError: true,
+      };
     case "REMOVE_STORY":
-      return state.filter(
-        (story: Story) => action.payload.objectID !== story.objectID
-      );
+      return {
+        ...state,
+        data: state.data.filter(
+          (story) => action.payload.objectID !== story.objectID
+        ),
+      };
     default:
       throw new Error();
   }
@@ -72,25 +84,29 @@ const useStorageState = (key: string, initialState: string) => {
   return [value, setValue] as const;
 };
 
+const API_ENDPOINT = "https://hn.algolia.com/api/v1/search?query=";
+
 const App = () => {
   const [searchTerm, setSearchTerm] = useStorageState("search", "React");
 
-  const [stories, dispatchStories] = React.useReducer(storiesReducer, []);
-  const [isLoading, setIsLoading] = React.useState(false);
-  const [isError, setIsError] = React.useState(false);
+  const [stories, dispatchStories] = React.useReducer(storiesReducer, {
+    data: [],
+    isLoading: false,
+    isError: false,
+  });
 
   React.useEffect(() => {
-    setIsLoading(true);
+    dispatchStories({ type: "STORIES_FETCH_INIT" });
 
-    getAsyncStories()
+    fetch(`${API_ENDPOINT}react`)
+      .then((response) => response.json())
       .then((result) => {
         dispatchStories({
-          type: "SET_STORIES",
-          payload: result.data.stories,
+          type: "STORIES_FETCH_SUCCESS",
+          payload: result.hits,
         });
-        setIsLoading(false);
       })
-      .catch(() => setIsError(true));
+      .catch(() => dispatchStories({ type: "STORIES_FETCH_FAILURE" }));
   }, []);
 
   const handleRemoveStory = (item: Story) => {
@@ -104,7 +120,7 @@ const App = () => {
     setSearchTerm(event.target.value);
   };
 
-  const searchedStories = stories.filter((story: Story) =>
+  const searchedStories = stories.data.filter((story) =>
     story.title.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -123,9 +139,9 @@ const App = () => {
 
       <hr />
 
-      {isError && <p>Something went wrong ...</p>}
+      {stories.isError && <p>Something went wrong ...</p>}
 
-      {isLoading ? (
+      {stories.isLoading ? (
         <p>Loading ...</p>
       ) : (
         <List list={searchedStories} onRemoveItem={handleRemoveStory} />
