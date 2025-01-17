@@ -1,3 +1,4 @@
+import axios from "axios";
 import * as React from "react";
 
 type Story = {
@@ -89,27 +90,28 @@ const API_ENDPOINT = "https://hn.algolia.com/api/v1/search?query=";
 const App = () => {
   const [searchTerm, setSearchTerm] = useStorageState("search", "React");
 
+  const [url, setUrl] = React.useState(`${API_ENDPOINT}${searchTerm}`);
+
   const [stories, dispatchStories] = React.useReducer(storiesReducer, {
     data: [],
     isLoading: false,
     isError: false,
   });
 
-  const handleFetchStories = React.useCallback(() => {
-    if (!searchTerm) return;
-
+  const handleFetchStories = React.useCallback(async () => {
     dispatchStories({ type: "STORIES_FETCH_INIT" });
 
-    fetch(`${API_ENDPOINT}${searchTerm}`)
-      .then((response) => response.json())
-      .then((result) => {
-        dispatchStories({
-          type: "STORIES_FETCH_SUCCESS",
-          payload: result.hits,
-        });
-      })
-      .catch(() => dispatchStories({ type: "STORIES_FETCH_FAILURE" }));
-  }, [searchTerm]);
+    try {
+      const result = await axios.get(url);
+
+      dispatchStories({
+        type: "STORIES_FETCH_SUCCESS",
+        payload: result.data.hits,
+      });
+    } catch {
+      dispatchStories({ type: "STORIES_FETCH_FAILURE" });
+    }
+  }, [url]);
 
   React.useEffect(() => {
     handleFetchStories();
@@ -122,22 +124,25 @@ const App = () => {
     });
   };
 
-  const handleSearch = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSearchInput = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(event.target.value);
+  };
+
+  const handleSearchSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    setUrl(`${API_ENDPOINT}${searchTerm}`);
+
+    event.preventDefault();
   };
 
   return (
     <div>
       <h1>My Hacker Stories</h1>
 
-      <InputWithLabel
-        id="search"
-        value={searchTerm}
-        isFocused
-        onInputChange={handleSearch}
-      >
-        <strong>Search:</strong>
-      </InputWithLabel>
+      <SearchForm
+        searchTerm={searchTerm}
+        onSearchInput={handleSearchInput}
+        onSearchSubmit={handleSearchSubmit}
+      />
 
       <hr />
 
@@ -151,6 +156,33 @@ const App = () => {
     </div>
   );
 };
+
+type SearchFormProps = {
+  searchTerm: string;
+  onSearchInput: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onSearchSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+};
+
+const SearchForm = ({
+  searchTerm,
+  onSearchInput,
+  onSearchSubmit,
+}: SearchFormProps) => (
+  <form onSubmit={onSearchSubmit}>
+    <InputWithLabel
+      id="search"
+      value={searchTerm}
+      isFocused
+      onInputChange={onSearchInput}
+    >
+      <strong>Search:</strong>
+    </InputWithLabel>
+
+    <button type="submit" disabled={!searchTerm}>
+      Submit
+    </button>
+  </form>
+);
 
 type InputWithLabelProps = {
   id: string;
